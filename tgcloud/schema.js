@@ -77,6 +77,10 @@ export const rawUpdates = table(
 );
 
 export const topics = table('topics', {
+  key: text('key').primaryKey(),
+}).deprecated('replaced by contact_topics');
+
+export const contactTopics = table('contact_topics', {
   peerId: integer('peer_id').primaryKey(),
   ownerId: integer('owner_id').notNull(),
   threadId: integer('thread_id'),

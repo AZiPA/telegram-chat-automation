@@ -1,26 +1,26 @@
 import { db } from 'sdk';
 import { and, eq } from 'sdk/db';
-import { settings, topics } from '../../schema.js';
+import { contactTopics, settings } from '../../schema.js';
 
 export const TOPICS_DISABLED_UNTIL_KEY = 'topics_disabled_until';
 
 /** Finds a topic row by its peer ID primary key. */
 export async function findTopicByPeerId(peerId) {
-  return await db.select().from(topics).where(eq(topics.peerId, peerId)).get();
+  return await db.select().from(contactTopics).where(eq(contactTopics.peerId, peerId)).get();
 }
 
 /** Counts ready contact topics for the given owner chat. */
 export async function countReadyTopics(ownerId) {
   return await db.$count(
-    topics,
-    and(eq(topics.ownerId, ownerId), eq(topics.status, 'ready'))
+    contactTopics,
+    and(eq(contactTopics.ownerId, ownerId), eq(contactTopics.status, 'ready'))
   );
 }
 
 /** Attempts an atomic lease insert for a new topic in `'creating'` state. */
 export async function claimTopicCreation({ peerId, ownerId, name, claimedAt }) {
   return await db
-    .insert(topics)
+    .insert(contactTopics)
     .values({
       peerId,
       ownerId,
@@ -37,9 +37,9 @@ export async function claimTopicCreation({ peerId, ownerId, name, claimedAt }) {
 /** Publishes a created forum topic if `claimedAt` still owns the lease. */
 export async function publishTopicReady(peerId, claimedAt, threadId, name) {
   return await db
-    .update(topics)
+    .update(contactTopics)
     .set({ status: 'ready', threadId, name, updatedAt: new Date() })
-    .where(and(eq(topics.peerId, peerId), eq(topics.claimedAt, claimedAt)))
+    .where(and(eq(contactTopics.peerId, peerId), eq(contactTopics.claimedAt, claimedAt)))
     .returning();
 }
 
@@ -52,13 +52,13 @@ export async function stealStaleTopicClaim(
   name
 ) {
   return await db
-    .update(topics)
+    .update(contactTopics)
     .set({ ownerId, name, claimedAt: newClaimedAt, updatedAt: new Date() })
     .where(
       and(
-        eq(topics.peerId, peerId),
-        eq(topics.status, 'creating'),
-        eq(topics.claimedAt, expectedClaimedAt)
+        eq(contactTopics.peerId, peerId),
+        eq(contactTopics.status, 'creating'),
+        eq(contactTopics.claimedAt, expectedClaimedAt)
       )
     )
     .returning();
@@ -67,12 +67,12 @@ export async function stealStaleTopicClaim(
 /** Releases a `'creating'` claim owned by `claimedAt` after topic creation fails. */
 export async function deleteCreatingClaim(peerId, claimedAt) {
   await db
-    .delete(topics)
+    .delete(contactTopics)
     .where(
       and(
-        eq(topics.peerId, peerId),
-        eq(topics.status, 'creating'),
-        eq(topics.claimedAt, claimedAt)
+        eq(contactTopics.peerId, peerId),
+        eq(contactTopics.status, 'creating'),
+        eq(contactTopics.claimedAt, claimedAt)
       )
     )
     .run();
@@ -81,17 +81,17 @@ export async function deleteCreatingClaim(peerId, claimedAt) {
 /** Conditionally deletes a stale topic row matching the deleted `threadId`. */
 export async function deleteTopicByThreadId(peerId, threadId) {
   await db
-    .delete(topics)
-    .where(and(eq(topics.peerId, peerId), eq(topics.threadId, threadId)))
+    .delete(contactTopics)
+    .where(and(eq(contactTopics.peerId, peerId), eq(contactTopics.threadId, threadId)))
     .run();
 }
 
 /** Updates the cached topic name on an active topic row. */
 export async function updateTopicName(peerId, threadId, name) {
   await db
-    .update(topics)
+    .update(contactTopics)
     .set({ name, updatedAt: new Date() })
-    .where(and(eq(topics.peerId, peerId), eq(topics.threadId, threadId)))
+    .where(and(eq(contactTopics.peerId, peerId), eq(contactTopics.threadId, threadId)))
     .run();
 }
 

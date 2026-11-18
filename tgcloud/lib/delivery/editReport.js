@@ -1,52 +1,26 @@
+import { HEADERS, LABELS, MAX_TEXT_LENGTH, formatTimestamp, getMediaTypeLabel } from '../config.js';
 import {
-  HEADERS,
-  LABELS,
-  MAX_TEXT_LENGTH,
-  formatTimestamp,
-  getMediaTypeLabel,
-} from '../config.js';
+  buildEditHeaderLines,
+  getDisplayTextAndEntities,
+  tryBuildCompactEditHtml,
+} from '../media/editFormat.js';
 import { escapeHtml } from '../media/formatting.js';
 import { prependPrefixWithEntities } from '../media/textEdit.js';
 import { mediaSupportsCaption, sendArchiveCopy } from './archiveCopy.js';
 import { sendHtmlMessage, sendTextSafely } from './client.js';
+import { sendWithPeerTopic } from './topics.js';
 
-function getDisplayTextAndEntities(record) {
-  if (record.mediaType === 'text') {
-    const hasText = typeof record.text === 'string' && record.text.length > 0;
-    return {
-      text: hasText ? record.text : LABELS.emptyText,
-      entities: hasText ? record.entities ?? null : null,
-    };
-  }
-  if (typeof record.caption === 'string' && record.caption.length > 0) {
-    return {
-      text: record.caption,
-      entities: record.captionEntities ?? null,
-    };
-  }
-  if (record.extra?.summary) {
-    return {
-      text: record.extra.summary,
-      entities: null,
-    };
-  }
-  return {
-    text: LABELS.emptyText,
-    entities: null,
-  };
-}
-
-async function sendPreparedEditPart(chatId, prepared, replyToMessageId) {
-  const entities =
-    prepared.text.length <= MAX_TEXT_LENGTH ? prepared.entities : undefined;
+async function sendPreparedEditPart(chatId, prepared, replyToMessageId, deliveryOpts) {
+  const entities = prepared.text.length <= MAX_TEXT_LENGTH ? prepared.entities : undefined;
   return await sendTextSafely(chatId, prepared.text, {
+    ...deliveryOpts,
     replyToMessageId,
     maxLen: MAX_TEXT_LENGTH,
     entities,
   });
 }
 
-async function sendLabeledMediaCopy(ownerChatId, record, captionText, labelHtml, headerId) {
+async function sendLabeledMediaCopy(ownerChatId, record, captionText, labelHtml, headerId, deliveryOpts) {
   if (!record.fileId) return;
 
   if (mediaSupportsCaption(record.mediaType)) {
@@ -54,12 +28,13 @@ async function sendLabeledMediaCopy(ownerChatId, record, captionText, labelHtml,
       ownerChatId,
       { ...record, caption: captionText, captionEntities: null },
       null,
-      { replyToMessageId: headerId }
+      { ...deliveryOpts, replyToMessageId: headerId }
     );
     return;
   }
 
   const labelMsg = await sendHtmlMessage(ownerChatId, labelHtml, {
+    ...deliveryOpts,
     replyToMessageId: headerId,
     label: 'editedMediaLabel',
   });
@@ -67,20 +42,12 @@ async function sendLabeledMediaCopy(ownerChatId, record, captionText, labelHtml,
     ownerChatId,
     { ...record, caption: null, captionEntities: null },
     null,
-    { replyToMessageId: labelMsg?.message_id ?? headerId }
+    { ...deliveryOpts, replyToMessageId: labelMsg?.message_id ?? headerId }
   );
 }
 
-/**
- * Reports an edit to an unarchived pre-bot message along with its current snapshot.
- */
-export async function deliverUnarchivedEditReport(
-  ownerChatId,
-  record,
-  senderRaw,
-  chatRaw,
-  editedAt
-) {
+/** Reports an edit to an unarchived pre-bot message silently inside the contact's topic. */
+export async function deliverUnarchivedEditReport(ownerChatId, record, senderRaw, chatRaw, editedAt, options = {}) {
   const lines = [
     HEADERS.editedUnarchivedMessage,
     `${LABELS.sender}: ${escapeHtml(senderRaw)}`,
@@ -93,74 +60,56 @@ export async function deliverUnarchivedEditReport(
   }
   lines.push(LABELS.divider);
 
-  await sendArchiveCopy(ownerChatId, record, lines.join('\n'));
+  await sendArchiveCopy(ownerChatId, record, lines.join('\n'), {
+    peer: options.peer,
+    disableNotification: true,
+  });
 }
 
-/**
- * Delivers the Before/After text diff (with entity offset shifting) and optional
- * previous/new media copies when a file was replaced.
- */
-export async function deliverEditDiffReport(
-  ownerChatId,
-  storedRow,
-  newContent,
-  senderRaw,
-  chatRaw,
-  editedAt
-) {
-  const mediaChanged =
-    (storedRow.fileUniqueId ?? null) !== (newContent.fileUniqueId ?? null);
+/** Delivers an edit report silently using Compact 1-Message mode or 3-Message entity-preserving mode. */
+export async function deliverEditDiffReport(ownerChatId, storedRow, newContent, senderRaw, chatRaw, editedAt, options = {}) {
+  const mediaChanged = (storedRow.fileUniqueId ?? null) !== (newContent.fileUniqueId ?? null);
+  const headerLines = buildEditHeaderLines(storedRow, newContent, senderRaw, chatRaw, editedAt, mediaChanged);
+  const compactHtml = tryBuildCompactEditHtml(headerLines, storedRow, newContent);
 
-  const headerLines = [
-    HEADERS.editedMessage,
-    `${LABELS.sender}: ${escapeHtml(senderRaw || storedRow.senderName || 'Unknown')}`,
-    `${LABELS.chat}: ${escapeHtml(chatRaw)}`,
-    `${LABELS.editedAt}: ${escapeHtml(formatTimestamp(editedAt))}`,
-  ];
-  if (mediaChanged) {
-    headerLines.push(
-      `${LABELS.mediaType}: ${escapeHtml(getMediaTypeLabel(storedRow.mediaType))} → ${escapeHtml(getMediaTypeLabel(newContent.mediaType))}`
+  await sendWithPeerTopic(ownerChatId, options.peer, async (threadId, isRetry) => {
+    const deliveryOpts = {
+      messageThreadId: threadId,
+      disableNotification: true,
+      rethrowTopicError: Boolean(threadId) && !isRetry,
+    };
+
+    if (compactHtml) {
+      await sendHtmlMessage(ownerChatId, compactHtml, { ...deliveryOpts, label: 'editedCompact' });
+      return;
+    }
+
+    const headerMsg = await sendHtmlMessage(
+      ownerChatId,
+      [...headerLines, LABELS.divider].join('\n'),
+      { ...deliveryOpts, label: 'editedHeader' }
     );
-  }
-  const forwardOrigin = newContent.extra?.forwardOrigin || storedRow.extra?.forwardOrigin;
-  if (forwardOrigin) {
-    headerLines.push(`${LABELS.forwardOrigin}: ${escapeHtml(forwardOrigin)}`);
-  }
-  headerLines.push(LABELS.divider);
+    const headerId = headerMsg?.message_id;
 
-  const headerMsg = await sendHtmlMessage(ownerChatId, headerLines.join('\n'), {
-    label: 'editedHeader',
+    const beforePart = getDisplayTextAndEntities(storedRow);
+    const afterPart = getDisplayTextAndEntities(newContent);
+
+    await sendPreparedEditPart(
+      ownerChatId,
+      prependPrefixWithEntities('🔴 Before:\n', beforePart.text, beforePart.entities),
+      headerId,
+      deliveryOpts
+    );
+    await sendPreparedEditPart(
+      ownerChatId,
+      prependPrefixWithEntities('🟢 After:\n', afterPart.text, afterPart.entities),
+      headerId,
+      deliveryOpts
+    );
+
+    if (mediaChanged) {
+      await sendLabeledMediaCopy(ownerChatId, storedRow, '🔴 Previous media', HEADERS.editedPreviousMedia, headerId, deliveryOpts);
+      await sendLabeledMediaCopy(ownerChatId, newContent, '🟢 New media', HEADERS.editedNewMedia, headerId, deliveryOpts);
+    }
   });
-  const headerId = headerMsg?.message_id;
-
-  const beforePart = getDisplayTextAndEntities(storedRow);
-  const afterPart = getDisplayTextAndEntities(newContent);
-
-  await sendPreparedEditPart(
-    ownerChatId,
-    prependPrefixWithEntities('🔴 Before:\n', beforePart.text, beforePart.entities),
-    headerId
-  );
-  await sendPreparedEditPart(
-    ownerChatId,
-    prependPrefixWithEntities('🟢 After:\n', afterPart.text, afterPart.entities),
-    headerId
-  );
-
-  if (mediaChanged) {
-    await sendLabeledMediaCopy(
-      ownerChatId,
-      storedRow,
-      '🔴 Previous media',
-      HEADERS.editedPreviousMedia,
-      headerId
-    );
-    await sendLabeledMediaCopy(
-      ownerChatId,
-      newContent,
-      '🟢 New media',
-      HEADERS.editedNewMedia,
-      headerId
-    );
-  }
 }

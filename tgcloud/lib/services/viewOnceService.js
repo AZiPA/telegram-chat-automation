@@ -39,9 +39,20 @@ function buildViewOnceHeaderHtml(replySenderRaw, chatRaw, mediaType, replyDate, 
   return lines.join('\n');
 }
 
+function buildViewOncePeer(message, replyMsg) {
+  return {
+    id: message.chat.id,
+    first_name: message.chat.first_name ?? replyMsg.from?.first_name,
+    last_name: message.chat.last_name ?? replyMsg.from?.last_name,
+    username: message.chat.username ?? replyMsg.from?.username,
+    title: message.chat.title,
+  };
+}
+
 /**
  * Captures view-once (or unarchived) media when the owner replies to it before opening,
- * rolling back DB state on failure and optionally deleting the trigger reply on success.
+ * routes it to the contact's topic, rolls back DB state on failure, and optionally
+ * deletes the trigger reply on success.
  *
  * @param {object} conn
  * @param {object} message
@@ -106,6 +117,7 @@ export async function handleViewOnceReplyTrigger(conn, message) {
 
   const res = await sendArchiveCopy(conn.ownerChatId, targetRow, headerHtml, {
     allowReuploadFallback: true,
+    peer: buildViewOncePeer(message, replyMsg),
   });
 
   if (!res.ok) {

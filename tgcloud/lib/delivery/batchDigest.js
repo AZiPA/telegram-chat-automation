@@ -2,6 +2,7 @@ import { LABELS, MAX_DIGEST_LENGTH, formatTimestamp } from '../config.js';
 import { sendHtmlMessage, sendTextSafely } from './client.js';
 import { sendArchiveCopy } from './archiveCopy.js';
 import { sendAlbumCopy } from './albumCopy.js';
+import { sendWithPeerTopic } from './topics.js';
 
 function buildTextDigestEntry(row) {
   const metaLine = `#${row.messageId} • ${formatTimestamp(row.createdAt)}`;
@@ -15,16 +16,7 @@ function buildTextDigestEntry(row) {
   return [metaLine, forwardLine, body].filter(Boolean).join('\n');
 }
 
-/**
- * Delivers a batch of deleted messages under one header: combined text/other digest
- * plus grouped albums and individual media copies.
- *
- * @param {number} ownerChatId
- * @param {object[]} claimedRows
- * @param {string|null} headerHtml
- * @returns {Promise<{ deliveredIds: number[], failedIds: number[] }>}
- */
-export async function sendDeletedBatchDigest(ownerChatId, claimedRows, headerHtml) {
+async function sendDeletedBatchDigestInternal(ownerChatId, claimedRows, headerHtml, options) {
   const deliveredIds = [];
   const failedIds = [];
 
@@ -32,8 +24,17 @@ export async function sendDeletedBatchDigest(ownerChatId, claimedRows, headerHtm
     return { deliveredIds, failedIds };
   }
 
+  const sharedOpts = {
+    messageThreadId: options.messageThreadId,
+    disableNotification: options.disableNotification,
+    rethrowTopicError: options.rethrowTopicError,
+  };
+
   const headerMsg = headerHtml
-    ? await sendHtmlMessage(ownerChatId, headerHtml, { label: 'sendDeletedBatchHeader' })
+    ? await sendHtmlMessage(ownerChatId, headerHtml, {
+        ...sharedOpts,
+        label: 'sendDeletedBatchHeader',
+      })
     : null;
   const batchHeaderId = headerMsg?.message_id;
 
@@ -50,6 +51,7 @@ export async function sendDeletedBatchDigest(ownerChatId, claimedRows, headerHtm
   if (textRows.length > 0) {
     const digestText = textRows.map(buildTextDigestEntry).join('\n\n──────────\n\n');
     const digestRes = await sendTextSafely(ownerChatId, digestText, {
+      ...sharedOpts,
       replyToMessageId: batchHeaderId,
       maxLen: MAX_DIGEST_LENGTH,
     });
@@ -76,7 +78,10 @@ export async function sendDeletedBatchDigest(ownerChatId, claimedRows, headerHtm
 
         const groupRows = groupsById.get(row.mediaGroupId);
         if (groupRows.length >= 2) {
-          const albumRes = await sendAlbumCopy(ownerChatId, groupRows, null, batchHeaderId);
+          const albumRes = await sendAlbumCopy(ownerChatId, groupRows, null, {
+            ...sharedOpts,
+            replyToMessageId: batchHeaderId,
+          });
           deliveredIds.push(...albumRes.deliveredIds);
           failedIds.push(...albumRes.failedIds);
           continue;
@@ -84,6 +89,7 @@ export async function sendDeletedBatchDigest(ownerChatId, claimedRows, headerHtm
       }
 
       const res = await sendArchiveCopy(ownerChatId, row, null, {
+        ...sharedOpts,
         replyToMessageId: batchHeaderId,
       });
       if (res.ok) deliveredIds.push(row.id);
@@ -92,4 +98,33 @@ export async function sendDeletedBatchDigest(ownerChatId, claimedRows, headerHtm
   }
 
   return { deliveredIds, failedIds };
+}
+
+/**
+ * Delivers a batch of deleted messages under one header: combined text/other digest
+ * plus grouped albums and individual media copies, routed to the contact's topic.
+ *
+ * @param {number} ownerChatId
+ * @param {object[]} claimedRows
+ * @param {string|null} headerHtml
+ * @param {object} [options]
+ * @returns {Promise<{ deliveredIds: number[], failedIds: number[] }>}
+ */
+export async function sendDeletedBatchDigest(
+  ownerChatId,
+  claimedRows,
+  headerHtml,
+  options = {}
+) {
+  if (options.peer && options.messageThreadId === undefined) {
+    return await sendWithPeerTopic(ownerChatId, options.peer, (threadId, isRetry) =>
+      sendDeletedBatchDigestInternal(ownerChatId, claimedRows, headerHtml, {
+        ...options,
+        messageThreadId: threadId,
+        rethrowTopicError: Boolean(threadId) && !isRetry,
+      })
+    );
+  }
+
+  return await sendDeletedBatchDigestInternal(ownerChatId, claimedRows, headerHtml, options);
 }

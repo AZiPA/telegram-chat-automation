@@ -1,6 +1,11 @@
 import { api, InputFile } from 'sdk';
 import { MAX_GETFILE_BYTES } from '../config.js';
-import { safeCall, sendTextSafely } from './client.js';
+import {
+  buildNotificationParams,
+  buildThreadParams,
+  safeCall,
+  sendTextSafely,
+} from './client.js';
 
 const DEFAULT_FILE_META = {
   photo: { filename: 'photo.jpg', mimeType: 'image/jpeg' },
@@ -32,6 +37,7 @@ function buildInputFile(bytes, record) {
  * @param {object} captionParams
  * @param {object} replyParams
  * @param {number|undefined} replyTargetId
+ * @param {object} [options]
  * @returns {Promise<object|null>}
  */
 export async function reuploadViewOnceMedia(
@@ -40,13 +46,21 @@ export async function reuploadViewOnceMedia(
   mediaConfig,
   captionParams,
   replyParams,
-  replyTargetId
+  replyTargetId,
+  options = {}
 ) {
+  const noticeOpts = {
+    replyToMessageId: replyTargetId,
+    messageThreadId: options.messageThreadId,
+    disableNotification: options.disableNotification,
+    rethrowTopicError: options.rethrowTopicError,
+  };
+
   if (typeof record.fileSize === 'number' && record.fileSize > MAX_GETFILE_BYTES) {
     await sendTextSafely(
       ownerChatId,
-      '⚠️ This media exceeds Telegram\'s 20 MB bot download limit and cannot be saved automatically.',
-      { replyToMessageId: replyTargetId }
+      "⚠️ This media exceeds Telegram's 20 MB bot download limit and cannot be saved automatically.",
+      noticeOpts
     );
     return null;
   }
@@ -56,7 +70,7 @@ export async function reuploadViewOnceMedia(
     await sendTextSafely(
       ownerChatId,
       '⚠️ Failed to download view-once media (it may have expired or become inaccessible).',
-      { replyToMessageId: replyTargetId }
+      noticeOpts
     );
     return null;
   }
@@ -68,16 +82,19 @@ export async function reuploadViewOnceMedia(
         chat_id: ownerChatId,
         [mediaConfig.field]: inputFile,
         ...captionParams,
+        ...buildThreadParams(options.messageThreadId),
+        ...buildNotificationParams(options.disableNotification),
         ...replyParams,
       }),
-    `${mediaConfig.method}:reupload`
+    `${mediaConfig.method}:reupload`,
+    { rethrowTopicError: Boolean(options.rethrowTopicError) }
   );
 
   if (!sentMedia) {
     await sendTextSafely(
       ownerChatId,
       '⚠️ Failed to re-upload the view-once media to Telegram.',
-      { replyToMessageId: replyTargetId }
+      noticeOpts
     );
     return null;
   }

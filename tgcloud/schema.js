@@ -59,6 +59,7 @@ export const messages = table(
       t.messageId
     ),
     idxMsgCreated: index('idx_msg_created').on(t.createdAt),
+    idxMsgChat: index('idx_msg_chat').on(t.chatId),
   })
 );
 
@@ -72,5 +73,22 @@ export const rawUpdates = table(
   },
   (t) => ({
     idxRawCreated: index('idx_raw_created').on(t.createdAt),
+  })
+);
+
+export const topics = table(
+  'topics',
+  {
+    key: text('key').primaryKey(), // `${ownerChatId}:${peerChatId}`
+    ownerChatId: integer('owner_chat_id').notNull(),
+    peerChatId: integer('peer_chat_id').notNull(),
+    threadId: integer('thread_id'), // null while status === 'creating'
+    name: text('name'),
+    status: text('status').notNull(), // 'creating' | 'ready'
+    claimedAt: integer('claimed_at').notNull(), // unix ms (Date.now()) for lease expiration
+    updatedAt: integer('updated_at', { mode: 'timestamp' }).default(sql`(unixepoch())`),
+  },
+  (t) => ({
+    peerIdx: index('idx_topics_peer').on(t.peerChatId),
   })
 );

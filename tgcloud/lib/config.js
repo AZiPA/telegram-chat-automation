@@ -15,6 +15,8 @@ export const MAX_TEXT_LENGTH = 4096;
 export const MAX_DIGEST_LENGTH = 4000;
 export const MAX_CAPTION_LENGTH = 1024;
 
+const OWNER_ID_SETTING_KEY = 'owner_id';
+
 /**
  * Resolves the configured owner's numeric Telegram user ID from the `settings` table.
  * Returns `null` (fail-closed) when not seeded or invalid.
@@ -25,11 +27,40 @@ export async function getOwnerId() {
   const row = await db
     .select()
     .from(settings)
-    .where(eq(settings.key, 'owner_id'))
+    .where(eq(settings.key, OWNER_ID_SETTING_KEY))
     .get();
 
   const id = Number(row?.value);
   return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
+/**
+ * Validates and persists the configured owner's numeric Telegram user ID in the `settings` table.
+ *
+ * @param {unknown} ownerId
+ * @returns {Promise<void>}
+ */
+export async function setOwnerId(ownerId) {
+  const id =
+    typeof ownerId === 'number'
+      ? ownerId
+      : typeof ownerId === 'string' && /^[1-9][0-9]*$/.test(ownerId)
+        ? Number(ownerId)
+        : NaN;
+
+  if (!Number.isSafeInteger(id) || id <= 0) {
+    throw new Error('Invalid owner_id: must be a positive safe integer');
+  }
+
+  const now = new Date();
+  await db
+    .insert(settings)
+    .values({ key: OWNER_ID_SETTING_KEY, value: String(id), updatedAt: now })
+    .onConflictDoUpdate({
+      target: settings.key,
+      set: { value: String(id), updatedAt: now },
+    })
+    .run();
 }
 
 /**

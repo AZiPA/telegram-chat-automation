@@ -76,19 +76,12 @@ export const rawUpdates = table(
   })
 );
 
-export const topics = table(
-  'topics',
-  {
-    key: text('key').primaryKey(), // `${ownerChatId}:${peerChatId}`
-    ownerChatId: integer('owner_chat_id').notNull(),
-    peerChatId: integer('peer_chat_id').notNull(),
-    threadId: integer('thread_id'), // null while status === 'creating'
-    name: text('name'),
-    status: text('status').notNull(), // 'creating' | 'ready'
-    claimedAt: integer('claimed_at').notNull(), // unix ms (Date.now()) for lease expiration
-    updatedAt: integer('updated_at', { mode: 'timestamp' }).default(sql`(unixepoch())`),
-  },
-  (t) => ({
-    peerIdx: index('idx_topics_peer').on(t.peerChatId),
-  })
-);
+export const topics = table('topics', {
+  peerId: integer('peer_id').primaryKey(),
+  ownerId: integer('owner_id').notNull(),
+  threadId: integer('thread_id'),
+  name: text('name'),
+  status: text('status').notNull(), // 'creating' | 'ready'
+  claimedAt: integer('claimed_at').notNull(),
+  updatedAt: integer('updated_at', { mode: 'timestamp' }).default(sql`(unixepoch())`),
+});

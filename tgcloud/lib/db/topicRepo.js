@@ -4,27 +4,26 @@ import { settings, topics } from '../../schema.js';
 
 export const TOPICS_DISABLED_UNTIL_KEY = 'topics_disabled_until';
 
-/** Finds a topic row by its composite `${ownerChatId}:${peerChatId}` key. */
-export async function findTopicByKey(key) {
-  return await db.select().from(topics).where(eq(topics.key, key)).get();
+/** Finds a topic row by its peer ID primary key. */
+export async function findTopicByPeerId(peerId) {
+  return await db.select().from(topics).where(eq(topics.peerId, peerId)).get();
 }
 
 /** Counts ready contact topics for the given owner chat. */
-export async function countReadyTopics(ownerChatId) {
+export async function countReadyTopics(ownerId) {
   return await db.$count(
     topics,
-    and(eq(topics.ownerChatId, ownerChatId), eq(topics.status, 'ready'))
+    and(eq(topics.ownerId, ownerId), eq(topics.status, 'ready'))
   );
 }
 
 /** Attempts an atomic lease insert for a new topic in `'creating'` state. */
-export async function claimTopicCreation({ key, ownerChatId, peerChatId, name, claimedAt }) {
+export async function claimTopicCreation({ peerId, ownerId, name, claimedAt }) {
   return await db
     .insert(topics)
     .values({
-      key,
-      ownerChatId,
-      peerChatId,
+      peerId,
+      ownerId,
       threadId: null,
       name,
       status: 'creating',
@@ -36,22 +35,28 @@ export async function claimTopicCreation({ key, ownerChatId, peerChatId, name, c
 }
 
 /** Publishes a created forum topic if `claimedAt` still owns the lease. */
-export async function publishTopicReady(key, claimedAt, threadId, name) {
+export async function publishTopicReady(peerId, claimedAt, threadId, name) {
   return await db
     .update(topics)
     .set({ status: 'ready', threadId, name, updatedAt: new Date() })
-    .where(and(eq(topics.key, key), eq(topics.claimedAt, claimedAt)))
+    .where(and(eq(topics.peerId, peerId), eq(topics.claimedAt, claimedAt)))
     .returning();
 }
 
 /** Attempts a compare-and-swap steal of a stale `'creating'` lock. */
-export async function stealStaleTopicClaim(key, expectedClaimedAt, newClaimedAt) {
+export async function stealStaleTopicClaim(
+  peerId,
+  expectedClaimedAt,
+  newClaimedAt,
+  ownerId,
+  name
+) {
   return await db
     .update(topics)
-    .set({ claimedAt: newClaimedAt, updatedAt: new Date() })
+    .set({ ownerId, name, claimedAt: newClaimedAt, updatedAt: new Date() })
     .where(
       and(
-        eq(topics.key, key),
+        eq(topics.peerId, peerId),
         eq(topics.status, 'creating'),
         eq(topics.claimedAt, expectedClaimedAt)
       )
@@ -60,12 +65,12 @@ export async function stealStaleTopicClaim(key, expectedClaimedAt, newClaimedAt)
 }
 
 /** Releases a `'creating'` claim owned by `claimedAt` after topic creation fails. */
-export async function deleteCreatingClaim(key, claimedAt) {
+export async function deleteCreatingClaim(peerId, claimedAt) {
   await db
     .delete(topics)
     .where(
       and(
-        eq(topics.key, key),
+        eq(topics.peerId, peerId),
         eq(topics.status, 'creating'),
         eq(topics.claimedAt, claimedAt)
       )
@@ -74,19 +79,19 @@ export async function deleteCreatingClaim(key, claimedAt) {
 }
 
 /** Conditionally deletes a stale topic row matching the deleted `threadId`. */
-export async function deleteTopicByThreadId(key, threadId) {
+export async function deleteTopicByThreadId(peerId, threadId) {
   await db
     .delete(topics)
-    .where(and(eq(topics.key, key), eq(topics.threadId, threadId)))
+    .where(and(eq(topics.peerId, peerId), eq(topics.threadId, threadId)))
     .run();
 }
 
 /** Updates the cached topic name on an active topic row. */
-export async function updateTopicName(key, threadId, name) {
+export async function updateTopicName(peerId, threadId, name) {
   await db
     .update(topics)
     .set({ name, updatedAt: new Date() })
-    .where(and(eq(topics.key, key), eq(topics.threadId, threadId)))
+    .where(and(eq(topics.peerId, peerId), eq(topics.threadId, threadId)))
     .run();
 }
 

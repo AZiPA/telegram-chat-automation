@@ -79,6 +79,13 @@ export async function handleDeletedBusinessMessages(payload) {
   }
 
   const chatRaw = formatSenderRaw(null, payload.chat);
+  const unarchivedSummary =
+    NOTIFY_UNARCHIVED_DELETES && unknownIds.length > 0
+      ? `ℹ️ ${unknownIds.length} unarchived message${unknownIds.length === 1 ? '' : 's'} (likely sent before the bot was connected) ${unknownIds.length === 1 ? 'was' : 'were'} deleted in chat ${escapeHtml(chatRaw)}.`
+      : '';
+
+  if (claimedRows.length === 0 && !unarchivedSummary) return;
+
   const peer = payload.chat;
 
   if (claimedRows.length === 1) {
@@ -95,7 +102,7 @@ export async function handleDeletedBusinessMessages(payload) {
     if (failedIds.length > 0) await rollbackDeletedClaim(failedIds);
   }
 
-  if (overflowCount > 0) {
+  if (claimedRows.length > 0 && overflowCount > 0) {
     await sendPeerNotice(
       conn.ownerChatId,
       peer,
@@ -104,11 +111,11 @@ export async function handleDeletedBusinessMessages(payload) {
     );
   }
 
-  if (NOTIFY_UNARCHIVED_DELETES && unknownIds.length > 0) {
+  if (unarchivedSummary) {
     await sendPeerNotice(
       conn.ownerChatId,
       peer,
-      `ℹ️ ${unknownIds.length} unarchived message${unknownIds.length === 1 ? '' : 's'} (likely sent before the bot was connected) ${unknownIds.length === 1 ? 'was' : 'were'} deleted in chat ${escapeHtml(chatRaw)}.`,
+      unarchivedSummary,
       'unarchivedDeleteSummary'
     );
   }

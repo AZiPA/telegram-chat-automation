@@ -72,7 +72,7 @@ export async function handleEditedBusinessMessage(message) {
   const hasNumericEditDate = typeof message.edit_date === 'number';
   const editedAt = hasNumericEditDate ? new Date(message.edit_date * 1000) : new Date();
 
-  const storedRow = await findMessage(conn.connectionId, message.chat.id, message.message_id);
+  let storedRow = await findMessage(conn.connectionId, message.chat.id, message.message_id);
 
   if (!storedRow) {
     const createdAt = typeof message.date === 'number' ? new Date(message.date * 1000) : new Date();
@@ -88,9 +88,14 @@ export async function handleEditedBusinessMessage(message) {
       createdAt,
     });
 
-    await insertMessage(record);
-    await deliverUnarchivedEditReport(conn.ownerChatId, record, senderRaw, chatRaw, editedAt, { peer });
-    return;
+    const inserted = await insertMessage(record);
+    if (inserted) {
+      await deliverUnarchivedEditReport(conn.ownerChatId, inserted, senderRaw, chatRaw, editedAt, { peer });
+      return;
+    }
+
+    storedRow = await findMessage(conn.connectionId, message.chat.id, message.message_id);
+    if (!storedRow) return;
   }
 
   if (hasNumericEditDate && storedRow.editDate === message.edit_date) return;

@@ -10,7 +10,7 @@ import {
   formatTimestamp,
 } from '../config.js';
 import { listOwnerConnections } from '../db/connectionRepo.js';
-import { countReadyTopics, findTopicByKey } from '../db/topicRepo.js';
+import { countReadyTopics, findTopicByPeerId } from '../db/topicRepo.js';
 import { sendHtmlMessage } from '../delivery/client.js';
 import { clearTopicsCooldown } from '../delivery/topics.js';
 import { escapeHtml } from '../media/formatting.js';
@@ -58,8 +58,10 @@ function formatTopicsSection(activeTopicsCount) {
 
 async function buildContactArchiveSummary(ownerChatId, targetChatId) {
   const archivedCount = await db.$count(messages, eq(messages.chatId, targetChatId));
-  const topicRow = await findTopicByKey(`${ownerChatId}:${targetChatId}`);
-  const hasTopic = Boolean(topicRow?.status === 'ready' && topicRow.threadId);
+  const topicRow = await findTopicByPeerId(targetChatId);
+  const hasTopic = Boolean(
+    topicRow?.status === 'ready' && topicRow.threadId && topicRow.ownerId === ownerChatId
+  );
   const topicStatus = hasTopic
     ? `✅ Active — ${escapeHtml(topicRow.name || `Thread #${topicRow.threadId}`)} (<code>${topicRow.threadId}</code>)`
     : '❌ None yet';
@@ -125,7 +127,25 @@ export async function handlePrivateMessage(message) {
     sections.push(archiveSummarySection);
   }
 
-  await sendHtmlMessage(message.chat.id, sections.join('\n\n'), {
-    label: ownerConns.length ? 'startDashboard' : 'startNoConnection',
+  const html = sections.join('\n\n');
+  const label = ownerConns.length ? 'startDashboard' : 'startNoConnection';
+  const callerThreadId =
+    typeof message.message_thread_id === 'number' && message.message_thread_id !== 0
+      ? message.message_thread_id
+      : undefined;
+  const replyToMessageId =
+    typeof message.message_id === 'number' ? message.message_id : undefined;
+
+  const sent = await sendHtmlMessage(message.chat.id, html, {
+    label,
+    messageThreadId: callerThreadId,
+    replyToMessageId: callerThreadId !== undefined ? replyToMessageId : undefined,
   });
+
+  if (!sent && callerThreadId !== undefined) {
+    await sendHtmlMessage(message.chat.id, html, {
+      label: `${label}Fallback`,
+      replyToMessageId,
+    });
+  }
 }

@@ -48,13 +48,18 @@ export async function findMessagesByIds(connectionId, chatId, messageIds) {
 }
 
 /**
- * Inserts a message record if it does not already exist.
+ * Inserts a message record if it does not already exist, returning the inserted row or null.
  *
  * @param {object} record
- * @returns {Promise<void>}
+ * @returns {Promise<object|null>}
  */
 export async function insertMessage(record) {
-  await db.insert(messages).values(record).onConflictDoNothing().run();
+  const rows = await db
+    .insert(messages)
+    .values(record)
+    .onConflictDoNothing()
+    .returning();
+  return rows[0] ?? null;
 }
 
 /**

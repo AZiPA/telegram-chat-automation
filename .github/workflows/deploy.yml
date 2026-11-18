@@ -9,10 +9,7 @@ on:
         required: false
         type: choice
         default: safe
-        options:
-          - safe
-          - yes
-          - skip
+        options: ['safe', 'yes', 'skip']
 
 concurrency:
   group: tgcloud-deploy
@@ -53,7 +50,7 @@ jobs:
           TGCLOUD_TOKEN: ${{ secrets.TGCLOUD_TOKEN }}
           MIGRATION_MODE: ${{ inputs.migration_mode || 'safe' }}
         run: |
-          if [ "$MIGRATION_MODE" = "yes" ]; then
+          if [ "$MIGRATION_MODE" = "yes" ] || [ "$MIGRATION_MODE" = "true" ]; then
             npx tgcloud migrate --yes
           else
             npx tgcloud migrate --safe

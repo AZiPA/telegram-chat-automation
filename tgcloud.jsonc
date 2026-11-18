@@ -1,3 +1,5 @@
 {
   // Bot-only project (no Mini App static front-end hosted).
+  "$schema": "./node_modules/@tgcloud/cli/schema/tgcloud.json",
+  "root": "tgcloud"
 }

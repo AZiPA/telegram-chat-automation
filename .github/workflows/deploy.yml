@@ -9,7 +9,7 @@ on:
         required: false
         type: choice
         default: safe
-        options: ['safe', 'yes', 'skip']
+        options: ['safe', 'dry-run', 'skip', 'yes']
 
 concurrency:
   group: tgcloud-deploy
@@ -57,23 +57,10 @@ jobs:
 
       - name: Apply database migrations
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.migration_mode != 'skip' }}
-        shell: bash
         env:
           TGCLOUD_TOKEN: ${{ secrets.TGCLOUD_TOKEN }}
           MIGRATION_MODE: ${{ inputs.migration_mode || 'safe' }}
-        run: |
-          case "$MIGRATION_MODE" in
-            safe)
-              npx tgcloud migrate --safe
-              ;;
-            yes)
-              npx tgcloud migrate --yes
-              ;;
-            *)
-              echo "::error::Invalid migration_mode: $MIGRATION_MODE"
-              exit 1
-              ;;
-          esac
+        run: npx tgcloud migrate --"$MIGRATION_MODE"
 
       - name: Seed OWNER_ID into database
         shell: bash

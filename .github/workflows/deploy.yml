@@ -80,7 +80,8 @@ jobs:
         env:
           TGCLOUD_TOKEN: ${{ secrets.TGCLOUD_TOKEN }}
           OWNER_ID: ${{ secrets.OWNER_ID }}
-        run: npx tgcloud run handlers/message "{owner_id: ${OWNER_ID}}" --ctx '{ci_bootstrap: true}'
+        run: |
+          npx tgcloud run handlers/message "{owner_id: ${OWNER_ID}}" --ctx '{ci_bootstrap: true}'
 
       - name: Sync webhook
         env:
@@ -88,4 +89,3 @@ jobs:
         run: |
           npx tgcloud webhook sync
           npx tgcloud webhook
-          

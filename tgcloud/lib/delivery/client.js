@@ -80,6 +80,33 @@ export async function sendHtmlMessage(chatId, html, options = {}) {
   );
 }
 
+/** Sends an HTML reply inside the caller's thread (if any), falling back to main chat. */
+export async function replyToPrivateMessage(message, html, label = 'privateReply') {
+  if (!html || message?.chat?.id == null) return null;
+
+  const callerThreadId =
+    typeof message.message_thread_id === 'number' && message.message_thread_id !== 0
+      ? message.message_thread_id
+      : undefined;
+  const replyToMessageId =
+    typeof message.message_id === 'number' ? message.message_id : undefined;
+
+  const sent = await sendHtmlMessage(message.chat.id, html, {
+    label,
+    messageThreadId: callerThreadId,
+    replyToMessageId: callerThreadId !== undefined ? replyToMessageId : undefined,
+  });
+
+  if (!sent && callerThreadId !== undefined) {
+    return await sendHtmlMessage(message.chat.id, html, {
+      label: `${label}Fallback`,
+      replyToMessageId,
+    });
+  }
+
+  return sent;
+}
+
 /** Sends plain text safely without HTML parsing, preserving `entities` or splitting UTF-16 safely. */
 export async function sendTextSafely(chatId, text, options = {}) {
   const str = text === null || text === undefined ? '' : String(text);

@@ -1,8 +1,9 @@
 import { db } from 'sdk';
 import { and, eq } from 'sdk/db';
 import { contactTopics, settings } from '../../schema.js';
+import { SETTINGS_KEYS } from '../config.js';
 
-export const TOPICS_DISABLED_UNTIL_KEY = 'topics_disabled_until';
+export const TOPICS_DISABLED_UNTIL_KEY = SETTINGS_KEYS.TOPICS_DISABLED_UNTIL;
 
 /** Finds a topic row by its peer ID primary key. */
 export async function findTopicByPeerId(peerId) {

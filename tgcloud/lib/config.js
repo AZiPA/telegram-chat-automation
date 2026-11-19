@@ -1,10 +1,12 @@
 import { db } from 'sdk';
-import { eq } from 'sdk/db';
-import { settings } from '../schema.js';
+import { eq, ne } from 'sdk/db';
+import { connections, contactTopics, settings } from '../schema.js';
 
 export const RETENTION_DAYS = 30;
 export const RAW_UPDATES_RETENTION_DAYS = 3;
 export const DELETE_TRIGGER_REPLY = true;
+export const DEFAULT_VIEW_ONCE_TRIGGER = '.';
+export const MAX_TRIGGER_LENGTH = 32;
 export const CAPTURE_UNARCHIVED_REPLIES = true;
 export const NOTIFY_UNARCHIVED_DELETES = true;
 export const DEBUG_RAW_UPDATES = false;
@@ -15,7 +17,31 @@ export const MAX_TEXT_LENGTH = 4096;
 export const MAX_DIGEST_LENGTH = 4000;
 export const MAX_CAPTION_LENGTH = 1024;
 
-const OWNER_ID_SETTING_KEY = 'owner_id';
+export const SETTINGS_KEYS = {
+  OWNER_ID: 'owner_id',
+  VIEW_ONCE_TRIGGER: 'view_once_trigger',
+  VIEW_ONCE_AUTODELETE: 'view_once_autodelete',
+  TOPICS_DISABLED_UNTIL: 'topics_disabled_until',
+};
+
+const OWNER_ID_SETTING_KEY = SETTINGS_KEYS.OWNER_ID;
+
+/**
+ * Coerces a number or canonical positive integer string into a positive safe integer.
+ *
+ * @param {unknown} value
+ * @returns {number|null}
+ */
+function parsePositiveSafeInt(value) {
+  if (typeof value === 'number') {
+    return Number.isSafeInteger(value) && value > 0 ? value : null;
+  }
+  if (typeof value === 'string' && /^[1-9][0-9]*$/.test(value)) {
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+  }
+  return null;
+}
 
 /**
  * Resolves the configured owner's numeric Telegram user ID from the `settings` table.
@@ -30,29 +56,26 @@ export async function getOwnerId() {
     .where(eq(settings.key, OWNER_ID_SETTING_KEY))
     .get();
 
-  const id = Number(row?.value);
-  return Number.isSafeInteger(id) && id > 0 ? id : null;
+  return parsePositiveSafeInt(row?.value);
 }
 
 /**
- * Validates and persists the configured owner's numeric Telegram user ID in the `settings` table.
+ * Validates and persists the configured owner's numeric Telegram user ID in the `settings` table,
+ * cleaning up stale owner-scoped state (contact topics, connections, and topic cooldown) on rotation
+ * or orphan recovery while leaving archived `messages` untouched.
  *
  * @param {unknown} ownerId
  * @returns {Promise<void>}
  */
 export async function setOwnerId(ownerId) {
-  const id =
-    typeof ownerId === 'number'
-      ? ownerId
-      : typeof ownerId === 'string' && /^[1-9][0-9]*$/.test(ownerId)
-        ? Number(ownerId)
-        : NaN;
-
-  if (!Number.isSafeInteger(id) || id <= 0) {
+  const id = parsePositiveSafeInt(ownerId);
+  if (id === null) {
     throw new Error('Invalid owner_id: must be a positive safe integer');
   }
 
+  const previousOwnerId = await getOwnerId();
   const now = new Date();
+
   await db
     .insert(settings)
     .values({ key: OWNER_ID_SETTING_KEY, value: String(id), updatedAt: now })
@@ -61,17 +84,41 @@ export async function setOwnerId(ownerId) {
       set: { value: String(id), updatedAt: now },
     })
     .run();
+
+  await db
+    .delete(contactTopics)
+    .where(ne(contactTopics.ownerId, id))
+    .run();
+
+  await db
+    .delete(connections)
+    .where(ne(connections.ownerUserId, id))
+    .run();
+
+  if (previousOwnerId !== id) {
+    await db
+      .delete(settings)
+      .where(eq(settings.key, SETTINGS_KEYS.TOPICS_DISABLED_UNTIL))
+      .run();
+  }
 }
 
 /**
  * Synchronously checks whether a user ID matches a pre-resolved owner ID.
  *
  * @param {unknown} userId
- * @param {number|null|undefined} resolvedOwnerId
+ * @param {number|string|null|undefined} resolvedOwnerId
  * @returns {boolean}
  */
 export function isOwner(userId, resolvedOwnerId) {
-  return Boolean(resolvedOwnerId && Number(userId) === Number(resolvedOwnerId));
+  const owner = parsePositiveSafeInt(resolvedOwnerId);
+  const user = parsePositiveSafeInt(userId);
+  return (
+    Number.isSafeInteger(owner) &&
+    owner > 0 &&
+    Number.isSafeInteger(user) &&
+    user === owner
+  );
 }
 
 export const HEADERS = {
@@ -126,17 +173,44 @@ export const RIGHTS_CHECKLIST = [
   ['can_delete_all_messages', 'Delete all messages (for auto-deleting trigger replies)'],
 ];
 
+/**
+ * Formats a timestamp (Date, unix seconds/milliseconds, or timestamp string) in UTC,
+ * returning `'Unknown'` for unset, non-positive, or invalid inputs.
+ *
+ * @param {unknown} value
+ * @returns {string}
+ */
 export function formatTimestamp(value) {
-  if (value === null || value === undefined) return 'Unknown';
+  if (
+    value === null ||
+    value === undefined ||
+    value === '' ||
+    typeof value === 'boolean'
+  ) {
+    return 'Unknown';
+  }
 
-  const date =
-    value instanceof Date
-      ? value
-      : typeof value === 'number'
-        ? new Date(value > 1e12 ? value : value * 1000)
-        : new Date(value);
+  let date;
+  if (value instanceof Date) {
+    date = value;
+  } else if (typeof value === 'number') {
+    if (!Number.isFinite(value) || value <= 0) return 'Unknown';
+    date = new Date(value > 1e12 ? value : value * 1000);
+  } else if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return 'Unknown';
+    if (/^-?\d+(?:\.\d+)?$/.test(trimmed)) {
+      const numeric = Number(trimmed);
+      if (!Number.isFinite(numeric) || numeric <= 0) return 'Unknown';
+      date = new Date(numeric > 1e12 ? numeric : numeric * 1000);
+    } else {
+      date = new Date(trimmed);
+    }
+  } else {
+    return 'Unknown';
+  }
 
-  if (Number.isNaN(date.getTime())) return 'Unknown';
+  if (Number.isNaN(date.getTime()) || date.getTime() <= 0) return 'Unknown';
 
   const pad = (n) => String(n).padStart(2, '0');
   return (

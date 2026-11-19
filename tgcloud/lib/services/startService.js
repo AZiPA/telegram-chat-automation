@@ -5,13 +5,13 @@ import {
   HEADERS,
   LABELS,
   RIGHTS_CHECKLIST,
-  getOwnerId,
   isOwner,
   formatTimestamp,
 } from '../config.js';
 import { listOwnerConnections } from '../db/connectionRepo.js';
+import { getViewOnceConfig } from '../db/settings.js';
 import { countReadyTopics, findTopicByPeerId } from '../db/topicRepo.js';
-import { sendHtmlMessage } from '../delivery/client.js';
+import { replyToPrivateMessage } from '../delivery/client.js';
 import { clearTopicsCooldown } from '../delivery/topics.js';
 import { escapeHtml } from '../media/formatting.js';
 
@@ -56,6 +56,15 @@ function formatTopicsSection(activeTopicsCount) {
   ].join('\n');
 }
 
+function formatSmartTriggerSection({ trigger, autoDelete }) {
+  return [
+    '🎯 <b>View-Once Smart Trigger</b>',
+    `• <b>Trigger Text:</b> <code>${escapeHtml(trigger)}</code>`,
+    `• <b>Auto-Delete Trigger Reply:</b> ${autoDelete ? '✅ Enabled' : '❌ Disabled'}`,
+    '• <b>Commands:</b> /trigger, /autodelete',
+  ].join('\n');
+}
+
 async function buildContactArchiveSummary(ownerChatId, targetChatId) {
   const archivedCount = await db.$count(messages, eq(messages.chatId, targetChatId));
   const topicRow = await findTopicByPeerId(targetChatId);
@@ -79,29 +88,23 @@ async function buildContactArchiveSummary(ownerChatId, targetChatId) {
  * configured owner, resetting topic cooldown and displaying the status dashboard.
  *
  * @param {object} message
+ * @param {number} ownerId
+ * @param {string} [rawPayload]
  * @returns {Promise<void>}
  */
-export async function handlePrivateMessage(message) {
-  const ownerId = await getOwnerId();
-  if (ownerId === null) {
-    console.warn('[auth] owner_id is not seeded in settings table yet');
-    return;
-  }
-
-  const rawText = typeof message.text === 'string' ? message.text : '';
-  const startMatch = rawText.trim().match(/^\/start(?:@\S+)?(?:\s+(.*))?$/s);
-
-  if (!isOwner(message.from?.id, ownerId) || !startMatch) return;
+export async function handleStartCommand(message, ownerId, rawPayload = '') {
+  if (message?.chat?.type !== 'private' || !isOwner(message.from?.id, ownerId)) return;
 
   await clearTopicsCooldown();
 
-  const payload = (startMatch[1] ?? '').trim();
+  const payload = String(rawPayload ?? '').trim();
   const deepLinkMatch = payload.match(/^(?:bizChat)?(-?\d+)$/);
   const parsedChatId = deepLinkMatch ? Number(deepLinkMatch[1]) : null;
   const targetChatId = Number.isSafeInteger(parsedChatId) ? parsedChatId : null;
 
   const ownerConns = await listOwnerConnections(ownerId);
   const activeTopicsCount = await countReadyTopics(message.chat.id);
+  const viewOnceConfig = await getViewOnceConfig();
   const archiveSummarySection =
     targetChatId !== null
       ? await buildContactArchiveSummary(message.chat.id, targetChatId)
@@ -123,29 +126,12 @@ export async function handlePrivateMessage(message) {
   }
 
   sections.push(formatTopicsSection(activeTopicsCount));
+  sections.push(formatSmartTriggerSection(viewOnceConfig));
   if (archiveSummarySection) {
     sections.push(archiveSummarySection);
   }
 
   const html = sections.join('\n\n');
   const label = ownerConns.length ? 'startDashboard' : 'startNoConnection';
-  const callerThreadId =
-    typeof message.message_thread_id === 'number' && message.message_thread_id !== 0
-      ? message.message_thread_id
-      : undefined;
-  const replyToMessageId =
-    typeof message.message_id === 'number' ? message.message_id : undefined;
-
-  const sent = await sendHtmlMessage(message.chat.id, html, {
-    label,
-    messageThreadId: callerThreadId,
-    replyToMessageId: callerThreadId !== undefined ? replyToMessageId : undefined,
-  });
-
-  if (!sent && callerThreadId !== undefined) {
-    await sendHtmlMessage(message.chat.id, html, {
-      label: `${label}Fallback`,
-      replyToMessageId,
-    });
-  }
+  await replyToPrivateMessage(message, html, label);
 }

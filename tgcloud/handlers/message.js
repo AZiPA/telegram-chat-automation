@@ -1,10 +1,10 @@
 import { DEBUG_RAW_UPDATES, setOwnerId } from '../lib/config.js';
 import { logRawUpdate } from '../lib/db/maintenance.js';
-import { handlePrivateMessage } from '../lib/services/startService.js';
+import { handlePrivateMessage } from '../lib/services/commandService.js';
 
 /**
- * Entry point for private `message` updates (handles owner `/start` status dashboard
- * and explicit CI owner bootstrapping).
+ * Entry point for private `message` updates (handles owner `/start`, `/trigger`,
+ * `/autodelete` commands and explicit CI owner bootstrapping).
  *
  * @param {object} message
  * @param {object} [ctx]

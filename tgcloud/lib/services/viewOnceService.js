@@ -1,7 +1,6 @@
 import { api } from 'sdk';
 import {
   CAPTURE_UNARCHIVED_REPLIES,
-  DELETE_TRIGGER_REPLY,
   HEADERS,
   LABELS,
   isOwner,
@@ -9,6 +8,7 @@ import {
   getMediaTypeLabel,
 } from '../config.js';
 import { findMessage } from '../db/messageRepo.js';
+import { getViewOnceConfig, isTriggerReplyMatch } from '../db/settings.js';
 import {
   claimViewOnceRow,
   insertCapturedViewOnce,
@@ -51,8 +51,8 @@ function buildViewOncePeer(message, replyMsg) {
 
 /**
  * Captures view-once (or unarchived) media when the owner replies to it before opening,
- * routes it to the contact's topic, rolls back DB state on failure, and optionally
- * deletes the trigger reply on success.
+ * routes it to the contact's topic, rolls back DB state on failure, and auto-deletes
+ * the reply only when auto-delete is enabled, permitted, and matches the configured trigger.
  *
  * @param {object} conn
  * @param {object} message
@@ -132,8 +132,14 @@ export async function handleViewOnceReplyTrigger(conn, message) {
     }
   }
 
-  const rights = conn.rights ?? {};
-  if (DELETE_TRIGGER_REPLY && rights.can_delete_all_messages) {
+  const { trigger, autoDelete } = await getViewOnceConfig();
+  const canDeleteAll = Boolean((conn.rights ?? {}).can_delete_all_messages);
+  if (
+    res.ok === true &&
+    autoDelete === true &&
+    canDeleteAll &&
+    isTriggerReplyMatch(message, trigger) === true
+  ) {
     await safeCall(
       () =>
         api.deleteBusinessMessages({

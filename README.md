@@ -8,7 +8,7 @@
 [![Node.js: 26 (CI)](https://img.shields.io/badge/Node.js-26%20%28CI%29-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 [![License: MPL-2.0](https://img.shields.io/badge/License-MPL%202.0-brightgreen.svg)](./LICENSE)
 
-A personal **Telegram Business bot** running natively on **Telegram Serverless** (`@tgcloud/cli`) with **built-in SQLite** and **zero VPS** or external hosting. Once connected, this bot-only assistant (no Mini App required) privately archives 1-on-1 Business chats to **recover deleted Telegram messages**, **track edited messages** silently, and **save View-Once media**.
+A personal **Telegram Business bot** (also known as **Telegram Secretary**) running natively on **Telegram Serverless** (`@tgcloud/cli`) with **built-in SQLite** and **zero VPS** or external hosting. Once connected, this bot-only assistant (no Mini App required) privately archives 1-on-1 Business chats to **recover deleted Telegram messages**, **track edited messages** silently, and **save View-Once media**.
 
 > [!NOTE]
 > **Scope:** The bot only archives and recovers messages received **after** it is connected to your Telegram Business account; retroactive recovery of older pre-connection messages is not possible.

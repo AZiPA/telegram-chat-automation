@@ -28,20 +28,12 @@ jobs:
           TGCLOUD_TOKEN: ${{ secrets.TGCLOUD_TOKEN }}
           OWNER_ID: ${{ secrets.OWNER_ID }}
         run: |
-          if [ -z "$TGCLOUD_TOKEN" ]; then
-            echo "::error::TGCLOUD_TOKEN secret is missing."
-            exit 1
-          fi
           if [[ ! "$TGCLOUD_TOKEN" =~ ^app[0-9]+:[^[:space:]]+$ ]]; then
-            echo "::error::TGCLOUD_TOKEN secret is malformed (expected app<id>:<secret>)."
-            exit 1
-          fi
-          if [ -z "$OWNER_ID" ]; then
-            echo "::error::OWNER_ID secret is missing."
+            echo "::error::TGCLOUD_TOKEN secret is missing or malformed."
             exit 1
           fi
           if [[ ! "$OWNER_ID" =~ ^[1-9][0-9]*$ ]]; then
-            echo "::error::OWNER_ID secret is malformed (must be a positive integer)."
+            echo "::error::OWNER_ID secret is missing or must be a positive integer."
             exit 1
           fi
 
@@ -61,37 +53,39 @@ jobs:
       - name: Deploy modules (push)
         env:
           TGCLOUD_TOKEN: ${{ secrets.TGCLOUD_TOKEN }}
-        run: |
-          ./node_modules/.bin/tgcloud fetch || true
-          ./node_modules/.bin/tgcloud push --force
+        run: npx tgcloud push --force
 
       - name: Apply database migrations
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.migration_mode != 'skip' }}
+        shell: bash
         env:
           TGCLOUD_TOKEN: ${{ secrets.TGCLOUD_TOKEN }}
           MIGRATION_MODE: ${{ inputs.migration_mode || 'safe' }}
         run: |
-          if [ "$MIGRATION_MODE" = "yes" ] || [ "$MIGRATION_MODE" = "true" ]; then
-            ./node_modules/.bin/tgcloud migrate --yes
-          else
-            ./node_modules/.bin/tgcloud migrate --safe
-          fi
+          case "$MIGRATION_MODE" in
+            safe)
+              npx tgcloud migrate --safe
+              ;;
+            yes)
+              npx tgcloud migrate --yes
+              ;;
+            *)
+              echo "::error::Invalid migration_mode: $MIGRATION_MODE"
+              exit 1
+              ;;
+          esac
 
       - name: Seed OWNER_ID into database
         shell: bash
         env:
           TGCLOUD_TOKEN: ${{ secrets.TGCLOUD_TOKEN }}
           OWNER_ID: ${{ secrets.OWNER_ID }}
-        run: |
-          if [[ ! "$OWNER_ID" =~ ^[1-9][0-9]*$ ]]; then
-            echo "::error::OWNER_ID secret is malformed (must be a positive integer)."
-            exit 1
-          fi
-          ./node_modules/.bin/tgcloud run handlers/message "{owner_id: ${OWNER_ID}}" --ctx '{ci_bootstrap: true}'
+        run: npx tgcloud run handlers/message "{owner_id: ${OWNER_ID}}" --ctx '{ci_bootstrap: true}'
 
       - name: Sync webhook
         env:
           TGCLOUD_TOKEN: ${{ secrets.TGCLOUD_TOKEN }}
         run: |
-          ./node_modules/.bin/tgcloud webhook sync
-          ./node_modules/.bin/tgcloud webhook
+          npx tgcloud webhook sync
+          npx tgcloud webhook
+          

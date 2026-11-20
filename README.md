@@ -15,12 +15,12 @@ A personal **Telegram Business bot** (also known as **Telegram Secretary**) runn
 
 ## Quick Start — Deploy in 2 Minutes (GitHub Actions)
 
-1. **Prepare your bot in `@BotFather`:** Enable **Serverless** and **Business Mode** (disable **Allow Groups**; optionally enable **Threaded Mode** for per-contact topics), then copy your **CLI Access Token** (`app<id>:<secret>` from `Serverless → CLI Access` — NOT the standard Bot API HTTP token).
+1. **Prepare your bot in `@BotFather`:** Enable **Serverless** and **Business Mode** (disable **Allow Groups**; optionally enable **Threaded Mode** for per-contact topics), then copy your **CLI Access Token** (`app<id>:<secret>` from `Serverless → CLI Access` — NOT the standard Bot API HTTP token). In the [`@BotFather`](https://t.me/BotFather) Mini App (`Bot Settings → Access`), enable **Restrict bot usage** and verify your `OWNER_ID` account is in **Allowed users** (required explicitly if created on a different account).
 2. **Fork the repository:** Click **Fork** on [AZiPA/telegram-chat-automation](https://github.com/AZiPA/telegram-chat-automation) to create your own copy.
 3. **Add Repository Secrets:** Go to **Settings → Secrets and variables → Actions** and add `TGCLOUD_TOKEN` (`app<id>:<secret>`) and `OWNER_ID` (your positive numeric Telegram user ID).
 4. **Deploy & Activate:** Run **Actions → ✈️ Deploy to Telegram → Run workflow** (or push a commit), send `/start` to your bot in private chat **first**, then connect the bot under **Telegram Settings → Telegram Business → Chatbots** with read and delete permissions.
 
-**See the [Setup & Deployment Guide](https://azipa.github.io/projects/chat-automation/setup/) for full `@BotFather` steps, GitHub Actions deploy `migration_mode` options (`safe`, `dry-run`, `skip`, `yes`), local `@tgcloud/cli` deployment (Bash & Windows CMD), and required `BusinessBotRights`.**
+**See the [Setup & Deployment Guide](https://azipa.github.io/projects/chat-automation/setup/) for full `@BotFather` steps, GitHub Actions `migration_mode` options (`safe`, `dry-run`, `skip`, `yes`), local `@tgcloud/cli` deployment (Bash & Windows CMD), and required `BusinessBotRights`.**
 
 ## Key Features
 

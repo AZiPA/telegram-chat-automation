@@ -1,4 +1,4 @@
-import { HEADERS, LABELS, MAX_TEXT_LENGTH, formatTimestamp, getMediaTypeLabel } from '../config.js';
+import { HEADERS, LABELS, MAX_TEXT_LENGTH, formatHtmlTimestamp, getMediaTypeLabel } from '../config.js';
 import {
   buildEditHeaderLines,
   getDisplayTextAndEntities,
@@ -53,7 +53,7 @@ export async function deliverUnarchivedEditReport(ownerChatId, record, senderRaw
     `${LABELS.sender}: ${escapeHtml(senderRaw)}`,
     `${LABELS.chat}: ${escapeHtml(chatRaw)}`,
     `${LABELS.mediaType}: ${escapeHtml(getMediaTypeLabel(record.mediaType))}`,
-    `${LABELS.editedAt}: ${escapeHtml(formatTimestamp(editedAt))}`,
+    `${LABELS.editedAt}: ${formatHtmlTimestamp(editedAt)}`,
   ];
   if (record.extra?.forwardOrigin) {
     lines.push(`${LABELS.forwardOrigin}: ${escapeHtml(record.extra.forwardOrigin)}`);

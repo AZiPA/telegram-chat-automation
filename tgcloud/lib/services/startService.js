@@ -6,7 +6,7 @@ import {
   LABELS,
   RIGHTS_CHECKLIST,
   isOwner,
-  formatTimestamp,
+  formatHtmlTimestamp,
 } from '../config.js';
 import { listOwnerConnections } from '../db/connectionRepo.js';
 import { getViewOnceConfig } from '../db/settings.js';
@@ -26,7 +26,7 @@ function formatConnectionSection(conn) {
   const lines = [
     `🔗 <b>Registered Connection:</b> <code>${escapeHtml(shortId)}</code>`,
     `⚡ <b>Status:</b> ${conn.isEnabled ? '✅ Enabled' : '❌ Disabled'}`,
-    `${LABELS.updatedAt}: ${escapeHtml(formatTimestamp(conn.updatedAt))}`,
+    `${LABELS.updatedAt}: ${formatHtmlTimestamp(conn.updatedAt)}`,
   ];
 
   if (rightsKeys.length === 0) {

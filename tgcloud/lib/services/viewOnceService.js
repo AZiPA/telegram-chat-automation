@@ -4,7 +4,7 @@ import {
   HEADERS,
   LABELS,
   isOwner,
-  formatTimestamp,
+  formatHtmlTimestamp,
   getMediaTypeLabel,
 } from '../config.js';
 import { findMessage } from '../db/messageRepo.js';
@@ -30,7 +30,7 @@ function buildViewOnceHeaderHtml(replySenderRaw, chatRaw, mediaType, replyDate, 
     `${LABELS.sender}: ${escapeHtml(replySenderRaw)}`,
     `${LABELS.chat}: ${escapeHtml(chatRaw)}`,
     `${LABELS.mediaType}: ${escapeHtml(getMediaTypeLabel(mediaType))}`,
-    `${LABELS.sentAt}: ${escapeHtml(formatTimestamp(replyDate))}`,
+    `${LABELS.sentAt}: ${formatHtmlTimestamp(replyDate)}`,
   ];
   if (forwardOrigin) {
     lines.push(`${LABELS.forwardOrigin}: ${escapeHtml(forwardOrigin)}`);

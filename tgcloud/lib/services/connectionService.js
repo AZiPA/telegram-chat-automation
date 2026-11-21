@@ -3,7 +3,7 @@ import {
   LABELS,
   getOwnerId,
   isOwner,
-  formatTimestamp,
+  formatHtmlTimestamp,
 } from '../config.js';
 import { upsertBusinessConnection } from '../db/connectionRepo.js';
 import { sendHtmlMessage } from '../delivery/client.js';
@@ -48,7 +48,7 @@ export async function handleBusinessConnection(connection) {
 
   const lines = [
     statusHeader,
-    `${LABELS.sentAt}: ${escapeHtml(formatTimestamp(connection.date ?? now))}`,
+    `${LABELS.sentAt}: ${formatHtmlTimestamp(connection.date ?? now)}`,
   ];
 
   if (isEnabled) {

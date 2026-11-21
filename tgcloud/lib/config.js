@@ -173,6 +173,68 @@ export const RIGHTS_CHECKLIST = [
   ['can_delete_all_messages', 'Delete all messages (for auto-deleting trigger replies)'],
 ];
 
+const TG_TIME_FORMAT_RE = /^(r|w?[dD]?[tT]?)$/;
+const TG_TIME_MAX_UNIX = 2147483647;
+const TG_TIME_MAX_FUTURE_DAYS = 1097;
+const TG_TIME_MAX_FALLBACK_LENGTH = 31;
+
+/**
+ * Parses a Date, unix seconds/milliseconds number, or timestamp string into a positive Date.
+ * Returns `null` for unset, non-positive, or invalid inputs.
+ *
+ * @param {unknown} value
+ * @returns {Date|null}
+ */
+function parseTimestampDate(value) {
+  if (
+    value === null ||
+    value === undefined ||
+    value === '' ||
+    typeof value === 'boolean'
+  ) {
+    return null;
+  }
+
+  let date;
+  if (value instanceof Date) {
+    date = value;
+  } else if (typeof value === 'number') {
+    if (!Number.isFinite(value) || value <= 0) return null;
+    date = new Date(value > 1e12 ? value : value * 1000);
+  } else if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    if (/^-?\d+(?:\.\d+)?$/.test(trimmed)) {
+      const numeric = Number(trimmed);
+      if (!Number.isFinite(numeric) || numeric <= 0) return null;
+      date = new Date(numeric > 1e12 ? numeric : numeric * 1000);
+    } else {
+      const parsedMs = Date.parse(trimmed);
+      if (!Number.isFinite(parsedMs)) return null;
+      date = new Date(parsedMs);
+    }
+  } else {
+    return null;
+  }
+
+  if (Number.isNaN(date.getTime()) || date.getTime() <= 0) return null;
+  return date;
+}
+
+/**
+ * Formats a validated positive Date as `YYYY-MM-DD HH:mm:ss UTC`.
+ *
+ * @param {Date} date
+ * @returns {string}
+ */
+function formatUtcTimestamp(date) {
+  const pad = (n) => String(n).padStart(2, '0');
+  return (
+    `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())} ` +
+    `${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())} UTC`
+  );
+}
+
 /**
  * Formats a timestamp (Date, unix seconds/milliseconds, or timestamp string) in UTC,
  * returning `'Unknown'` for unset, non-positive, or invalid inputs.
@@ -181,42 +243,42 @@ export const RIGHTS_CHECKLIST = [
  * @returns {string}
  */
 export function formatTimestamp(value) {
+  const date = parseTimestampDate(value);
+  return date ? formatUtcTimestamp(date) : 'Unknown';
+}
+
+/**
+ * Formats a timestamp for Telegram `HTML` parse_mode using `<tg-time>` so clients
+ * render it in the recipient's local timezone, falling back to plain UTC text when
+ * the format or timestamp exceeds Telegram's `date_time` entity limits.
+ * Returns pre-formatted HTML-safe markup that must be interpolated raw (never via `escapeHtml`).
+ *
+ * @param {unknown} value
+ * @param {string} [format='dT']
+ * @returns {string}
+ */
+export function formatHtmlTimestamp(value, format = 'dT') {
+  const date = parseTimestampDate(value);
+  if (!date) return 'Unknown';
+
+  const fallback = formatUtcTimestamp(date);
+  if (typeof format !== 'string' || format.length === 0 || !TG_TIME_FORMAT_RE.test(format)) {
+    return fallback;
+  }
+
+  const unixSeconds = Math.floor(date.getTime() / 1000);
+  const maxSafeUnix = Math.floor(Date.now() / 1000) + TG_TIME_MAX_FUTURE_DAYS * 86400;
   if (
-    value === null ||
-    value === undefined ||
-    value === '' ||
-    typeof value === 'boolean'
+    !Number.isInteger(unixSeconds) ||
+    unixSeconds <= 0 ||
+    unixSeconds > TG_TIME_MAX_UNIX ||
+    unixSeconds > maxSafeUnix ||
+    fallback.length > TG_TIME_MAX_FALLBACK_LENGTH
   ) {
-    return 'Unknown';
+    return fallback;
   }
 
-  let date;
-  if (value instanceof Date) {
-    date = value;
-  } else if (typeof value === 'number') {
-    if (!Number.isFinite(value) || value <= 0) return 'Unknown';
-    date = new Date(value > 1e12 ? value : value * 1000);
-  } else if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (!trimmed) return 'Unknown';
-    if (/^-?\d+(?:\.\d+)?$/.test(trimmed)) {
-      const numeric = Number(trimmed);
-      if (!Number.isFinite(numeric) || numeric <= 0) return 'Unknown';
-      date = new Date(numeric > 1e12 ? numeric : numeric * 1000);
-    } else {
-      date = new Date(trimmed);
-    }
-  } else {
-    return 'Unknown';
-  }
-
-  if (Number.isNaN(date.getTime()) || date.getTime() <= 0) return 'Unknown';
-
-  const pad = (n) => String(n).padStart(2, '0');
-  return (
-    `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())} ` +
-    `${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(date.getUTCSeconds())} UTC`
-  );
+  return `<tg-time unix="${unixSeconds}" format="${format}">${fallback}</tg-time>`;
 }
 
 export function getMediaTypeLabel(mediaType) {

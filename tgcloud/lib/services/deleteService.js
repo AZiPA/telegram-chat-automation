@@ -3,7 +3,7 @@ import {
   LABELS,
   MAX_DELETE_BATCH,
   NOTIFY_UNARCHIVED_DELETES,
-  formatTimestamp,
+  formatHtmlTimestamp,
   getMediaTypeLabel,
 } from '../config.js';
 import { getActiveOwnerConnection } from '../db/connectionRepo.js';
@@ -21,8 +21,8 @@ function buildSingleDeleteHeader(row, chatRaw, deletedAt) {
     `${LABELS.sender}: ${escapeHtml(senderRaw)}`,
     `${LABELS.chat}: ${escapeHtml(chatRaw)}`,
     `${LABELS.mediaType}: ${escapeHtml(getMediaTypeLabel(row.mediaType))}`,
-    `${LABELS.sentAt}: ${escapeHtml(formatTimestamp(row.createdAt))}`,
-    `${LABELS.deletedAt}: ${escapeHtml(formatTimestamp(deletedAt))}`,
+    `${LABELS.sentAt}: ${formatHtmlTimestamp(row.createdAt)}`,
+    `${LABELS.deletedAt}: ${formatHtmlTimestamp(deletedAt)}`,
   ];
   if (row.extra?.forwardOrigin) lines.push(`${LABELS.forwardOrigin}: ${escapeHtml(row.extra.forwardOrigin)}`);
   lines.push(LABELS.divider);
@@ -36,7 +36,7 @@ function buildBatchDeleteHeader(claimedRows, chatRaw, deletedAt) {
     `${LABELS.count}: ${claimedRows.length} messages`,
     `${LABELS.sender}: ${escapeHtml(firstSenderRaw)}`,
     `${LABELS.chat}: ${escapeHtml(chatRaw)}`,
-    `${LABELS.deletedAt}: ${escapeHtml(formatTimestamp(deletedAt))}`,
+    `${LABELS.deletedAt}: ${formatHtmlTimestamp(deletedAt)}`,
     LABELS.divider,
   ].join('\n');
 }

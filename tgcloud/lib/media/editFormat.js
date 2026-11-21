@@ -1,4 +1,4 @@
-import { HEADERS, LABELS, MAX_TEXT_LENGTH, formatTimestamp, getMediaTypeLabel } from '../config.js';
+import { HEADERS, LABELS, MAX_TEXT_LENGTH, formatHtmlTimestamp, getMediaTypeLabel } from '../config.js';
 import { escapeHtml } from './formatting.js';
 
 /** Extracts display text and entity list from an archived or newly edited record. */
@@ -25,7 +25,7 @@ export function buildEditHeaderLines(storedRow, newContent, senderRaw, chatRaw, 
     HEADERS.editedMessage,
     `${LABELS.sender}: ${escapeHtml(senderRaw || storedRow.senderName || 'Unknown')}`,
     `${LABELS.chat}: ${escapeHtml(chatRaw)}`,
-    `${LABELS.editedAt}: ${escapeHtml(formatTimestamp(editedAt))}`,
+    `${LABELS.editedAt}: ${formatHtmlTimestamp(editedAt)}`,
   ];
   if (mediaChanged) {
     lines.push(

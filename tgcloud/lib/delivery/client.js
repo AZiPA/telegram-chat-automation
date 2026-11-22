@@ -4,6 +4,7 @@ import { splitTextSafely } from '../media/textEdit.js';
 
 const TOPIC_DELETED_RE = /message thread not found|TOPIC_DELETED|TOPIC_CLOSED|thread_id_invalid/i;
 const HTML_PARSE_ERROR_RE = /can't parse entities|ENTITY_DATE_INVALID|ENTITY_DATE_TOO_LONG/i;
+const RICH_METHOD_MISSING_RE = /method not found/i;
 const HTML_ENTITY_DECODE_MAP = {
   lt: '<',
   gt: '>',
@@ -26,6 +27,27 @@ export function isHtmlParseError(err) {
     err.code === 400 &&
     typeof err.description === 'string' &&
     HTML_PARSE_ERROR_RE.test(err.description)
+  );
+}
+
+/** Returns true when `err` indicates `sendRichMessage` is unavailable on the Bot API server. */
+export function isRichMethodMissingError(err) {
+  if (!err) return false;
+  if (err.code === 404) return true;
+  return (
+    err.code === 400 &&
+    typeof err.description === 'string' &&
+    RICH_METHOD_MISSING_RE.test(err.description)
+  );
+}
+
+/** Returns true when `err` is a Bot API 400 content error unrelated to topic state or missing method. */
+export function isRichContentError(err) {
+  if (!err) return false;
+  return (
+    err.code === 400 &&
+    !isDeletedTopicError(err) &&
+    !isRichMethodMissingError(err)
   );
 }
 
@@ -66,6 +88,14 @@ export async function safeCall(fn, label = '', options = {}) {
 
       if (options.rethrowTopicError && isDeletedTopicError(err)) {
         console.warn(`${prefix}Topic thread error; triggering self-heal:`, err.description);
+        throw err;
+      }
+
+      if (options.rethrowNotFound && isRichMethodMissingError(err)) {
+        throw err;
+      }
+
+      if (options.rethrowBadRequest && isRichContentError(err)) {
         throw err;
       }
 

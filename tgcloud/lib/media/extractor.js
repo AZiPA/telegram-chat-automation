@@ -1,3 +1,4 @@
+import { extractRichMessage } from '../rich/extract.js';
 import { buildStructuredExtra } from './structured.js';
 
 const VIEW_ONCE_MEDIA_TYPES = new Set(['photo', 'video', 'voice', 'video_note']);
@@ -65,6 +66,31 @@ export function extractMessageContent(msg) {
     if (msg[field]) {
       return buildMediaResult(mediaType, msg[field], msg, extra);
     }
+  }
+
+  if (msg.rich_message && typeof msg.rich_message === 'object') {
+    const rich = extractRichMessage(msg.rich_message);
+    const hasExtractedText = rich.text.length > 0;
+    const hasFallbackText = !hasExtractedText && typeof msg.text === 'string' && msg.text.length > 0;
+    return {
+      mediaType: 'text',
+      text: hasExtractedText ? rich.text : hasFallbackText ? msg.text : '',
+      caption: null,
+      entities: hasFallbackText && Array.isArray(msg.entities) ? msg.entities : null,
+      captionEntities: null,
+      fileId: null,
+      fileUniqueId: null,
+      fileSize: null,
+      fileName: null,
+      mimeType: null,
+      mediaGroupId: null,
+      extra: {
+        ...(extra ?? {}),
+        isRichMessage: true,
+        richBlockCount: rich.blockCount,
+        hasRichMedia: rich.hasMedia,
+      },
+    };
   }
 
   if (typeof msg.text === 'string') {

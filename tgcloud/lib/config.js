@@ -17,6 +17,11 @@ export const MAX_TEXT_LENGTH = 4096;
 export const MAX_DIGEST_LENGTH = 4000;
 export const MAX_CAPTION_LENGTH = 1024;
 
+export const USE_RICH_TEXT_REPORTS = true;
+export const RICH_MAX_UTF8_BYTES = 28000;
+export const RICH_MAX_BLOCKS = 400;
+export const RICH_MAX_NESTING = 16;
+
 export const SETTINGS_KEYS = {
   OWNER_ID: 'owner_id',
   VIEW_ONCE_TRIGGER: 'view_once_trigger',

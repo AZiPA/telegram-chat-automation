@@ -1,5 +1,11 @@
 import { api } from 'sdk';
-import { LABELS, MAX_CAPTION_LENGTH, MAX_TEXT_LENGTH } from '../config.js';
+import {
+  LABELS,
+  MAX_CAPTION_LENGTH,
+  MAX_TEXT_LENGTH,
+  USE_RICH_TEXT_REPORTS,
+} from '../config.js';
+import { buildRichDeletePayloads } from '../rich/deleteFormat.js';
 import {
   buildNotificationParams,
   buildReplyParams,
@@ -8,6 +14,7 @@ import {
   sendHtmlMessage,
   sendTextSafely,
 } from './client.js';
+import { sendRichReportSequence } from './richSequence.js';
 import { sendWithPeerTopic } from './topics.js';
 import { reuploadViewOnceMedia } from './viewOnceUpload.js';
 
@@ -66,7 +73,7 @@ async function sendMediaRecord(ownerChatId, record, replyTargetId, options) {
       options
     );
   }
-  if (!sentMedia) return { ok: false };
+  if (!sentMedia) return { ok: false, message: null };
 
   if (mediaConfig.supportsCaption && captionTooLong) {
     await sendTextSafely(ownerChatId, rawCaption, {
@@ -80,7 +87,7 @@ async function sendMediaRecord(ownerChatId, record, replyTargetId, options) {
   return { ok: true, message: sentMedia };
 }
 
-async function sendArchiveCopyInternal(ownerChatId, record, headerHtml, options) {
+async function sendClassicArchiveCopy(ownerChatId, record, headerHtml, options) {
   const headerMsg = headerHtml
     ? await sendHtmlMessage(ownerChatId, headerHtml, {
         label: 'sendArchiveHeader',
@@ -119,6 +126,45 @@ async function sendArchiveCopyInternal(ownerChatId, record, headerHtml, options)
     return await sendTextSafely(ownerChatId, body, textOpts);
   }
   return await sendTextSafely(ownerChatId, record.caption || record.text || LABELS.otherContent, textOpts);
+}
+
+async function sendRichDeleteCopy(ownerChatId, record, headerHtml, options) {
+  const meta = options.richDeleteMeta;
+  const payloads = buildRichDeletePayloads({
+    text: record.text,
+    entities: record.entities,
+    senderLabel: meta.senderLabel,
+    chatLabel: meta.chatLabel,
+    sentAt: meta.sentAt ?? record.createdAt,
+    deletedAt: meta.deletedAt,
+    messageId: meta.messageId ?? record.messageId,
+    forwardOrigin: meta.forwardOrigin ?? record.extra?.forwardOrigin ?? null,
+    isRichMessage: Boolean(meta.isRichMessage ?? record.extra?.isRichMessage),
+  });
+
+  return await sendRichReportSequence(ownerChatId, payloads, {
+    label: 'deletedTextRich',
+    messageThreadId: options.messageThreadId,
+    disableNotification: Boolean(options.disableNotification),
+    replyToMessageId: options.replyToMessageId,
+    rethrowTopicError: Boolean(options.rethrowTopicError),
+    singlePartClassicFallback: async (classicOpts) => {
+      const res = await sendClassicArchiveCopy(ownerChatId, record, headerHtml, {
+        ...options,
+        ...classicOpts,
+        richDeleteMeta: undefined,
+      });
+      return res.ok ? res.message : null;
+    },
+  });
+}
+
+async function sendArchiveCopyInternal(ownerChatId, record, headerHtml, options) {
+  const useRich = options.useRichTextReports ?? USE_RICH_TEXT_REPORTS;
+  if (record.mediaType === 'text' && options.richDeleteMeta && useRich) {
+    return await sendRichDeleteCopy(ownerChatId, record, headerHtml, options);
+  }
+  return await sendClassicArchiveCopy(ownerChatId, record, headerHtml, options);
 }
 
 /** Delivers an archived message copy with optional per-contact topic routing and self-healing. */

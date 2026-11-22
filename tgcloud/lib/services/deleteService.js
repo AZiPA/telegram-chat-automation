@@ -90,7 +90,27 @@ export async function handleDeletedBusinessMessages(payload) {
 
   if (claimedRows.length === 1) {
     const row = claimedRows[0];
-    const res = await sendArchiveCopy(conn.ownerChatId, row, buildSingleDeleteHeader(row, chatRaw, deletedAt), { peer });
+    const archiveOpts =
+      row.mediaType === 'text'
+        ? {
+            peer,
+            richDeleteMeta: {
+              senderLabel: row.senderName || chatRaw,
+              chatLabel: chatRaw,
+              sentAt: row.createdAt,
+              deletedAt,
+              messageId: row.messageId,
+              forwardOrigin: row.extra?.forwardOrigin ?? null,
+              isRichMessage: Boolean(row.extra?.isRichMessage),
+            },
+          }
+        : { peer };
+    const res = await sendArchiveCopy(
+      conn.ownerChatId,
+      row,
+      buildSingleDeleteHeader(row, chatRaw, deletedAt),
+      archiveOpts
+    );
     if (!res.ok) await rollbackDeletedClaim([row.id]);
   } else if (claimedRows.length > 1) {
     const { failedIds } = await sendDeletedBatchDigest(
